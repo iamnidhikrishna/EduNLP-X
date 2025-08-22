@@ -1,0 +1,44 @@
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql  # optional seeds
+    ports:
+      - "5432:5432"
+
+  backend: # Django
+    build: ./apps/backend
+    env_file: ./.env
+    depends_on: [postgres]
+    volumes:
+      - ./apps/backend:/app
+    ports:
+      - "8000:8000"
+
+  ai: # FastAPI
+    build: ./apps/ai
+    env_file: ./.env
+    depends_on: [postgres]
+    volumes:
+      - ./apps/ai:/app
+    ports:
+      - "8001:8001"
+
+  frontend: # Next.js
+    build: ./apps/frontend
+    env_file: ./.env
+    depends_on: [backend, ai]
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:
