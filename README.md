@@ -151,12 +151,14 @@ docker-compose up -d
 
 ## 🔐 Security Features
 
-- JWT-based authentication
+- JWT-based authentication with secure token handling
 - Role-based access control (RBAC)
 - Data encryption at rest and in transit
 - Input validation and sanitization
 - Rate limiting and abuse prevention
 - GDPR compliance ready
+- Regular security updates (see `SECURITY_UPDATES.md`)
+- Automated vulnerability scanning
 
 ## 🧪 Testing
 

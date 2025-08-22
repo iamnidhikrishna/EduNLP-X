@@ -427,9 +427,33 @@ make deploy-staging
 ### Code Review Guidelines
 
 - Ensure code quality and test coverage
-- Check for security vulnerabilities
+- Check for security vulnerabilities (see Security section below)
 - Verify API documentation updates
 - Test functionality manually
+
+## Security
+
+### Dependency Security
+
+The project uses automated security scanning to identify vulnerabilities in dependencies. See `SECURITY_UPDATES.md` for the latest security updates.
+
+**Security Update Process:**
+1. Run security audit: `npm audit` (frontend) and `pip-audit` (backend)
+2. Review vulnerability reports
+3. Update affected packages to secure versions
+4. Test for breaking changes
+5. Update security documentation
+
+**Tools for Security:**
+```bash
+# Install security audit tools
+pip install pip-audit
+npm install -g npm-audit
+
+# Run security audits
+pip-audit --requirement backend/requirements.txt
+npm audit --prefix frontend
+```
 
 ## Resources
 

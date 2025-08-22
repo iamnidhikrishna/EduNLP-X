@@ -4,7 +4,8 @@ Centralized configuration management using Pydantic Settings.
 """
 
 from typing import List, Optional, Any, Dict
-from pydantic import BaseSettings, validator, AnyHttpUrl
+from pydantic_settings import BaseSettings
+from pydantic import validator, AnyHttpUrl
 import secrets
 import os
 

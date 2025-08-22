@@ -10,7 +10,7 @@ from sqlalchemy import select
 from fastapi import HTTPException, status
 from loguru import logger
 
-from app.models import User, UserProfile
+from app.models import User, UserProfile, UserToken, TokenType
 from app.core.security import (
     get_password_hash,
     verify_password,
@@ -18,6 +18,7 @@ from app.core.security import (
     create_credentials_exception
 )
 from app.schemas.auth import UserRegister
+from app.services.email_service import EmailService
 
 
 class AuthService:
@@ -281,4 +282,205 @@ class AuthService:
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Error changing password for user {user_id}: {e}")
+            return False
+    
+    async def send_verification_email(self, user_id: str) -> bool:
+        """
+        Send email verification email to user.
+        
+        Args:
+            user_id: User's UUID
+            
+        Returns:
+            True if email sent successfully
+        """
+        try:
+            user = await self.get_user_by_id(user_id)
+            if not user:
+                return False
+            
+            if user.is_verified:
+                logger.warning(f"User {user.email} is already verified")
+                return True
+            
+            # Generate verification token
+            email_service = EmailService()
+            token = email_service.generate_verification_token()
+            
+            # Create token record
+            user_token = UserToken.create_verification_token(user.id, token)
+            self.db.add(user_token)
+            await self.db.commit()
+            
+            # Send verification email
+            success = await email_service.send_verification_email(
+                user.email, 
+                user.full_name, 
+                token
+            )
+            
+            if success:
+                logger.info(f"Verification email sent to: {user.email}")
+            else:
+                logger.error(f"Failed to send verification email to: {user.email}")
+            
+            return success
+            
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Error sending verification email for user {user_id}: {e}")
+            return False
+    
+    async def verify_email(self, token: str) -> bool:
+        """
+        Verify user email with token.
+        
+        Args:
+            token: Email verification token
+            
+        Returns:
+            True if verification successful
+        """
+        try:
+            # Find token
+            result = await self.db.execute(
+                select(UserToken)
+                .where(UserToken.token == token)
+                .where(UserToken.token_type == TokenType.EMAIL_VERIFICATION)
+            )
+            user_token = result.scalar_one_or_none()
+            
+            if not user_token:
+                logger.warning(f"Invalid verification token: {token}")
+                return False
+            
+            if not user_token.is_valid:
+                logger.warning(f"Expired or used verification token: {token}")
+                return False
+            
+            # Get user
+            user = await self.get_user_by_id(str(user_token.user_id))
+            if not user:
+                return False
+            
+            # Verify user
+            user.is_verified = True
+            user_token.mark_as_used()
+            
+            await self.db.commit()
+            
+            logger.info(f"Email verified for user: {user.email}")
+            return True
+            
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Error verifying email with token {token}: {e}")
+            return False
+    
+    async def send_password_reset_email(self, email: str) -> bool:
+        """
+        Send password reset email.
+        
+        Args:
+            email: User's email address
+            
+        Returns:
+            True if email sent successfully (always returns True for security)
+        """
+        try:
+            user = await self.get_user_by_email(email)
+            if not user:
+                # For security, always return True even if email doesn't exist
+                logger.warning(f"Password reset requested for non-existent email: {email}")
+                return True
+            
+            if not user.is_active:
+                logger.warning(f"Password reset requested for inactive user: {email}")
+                return True
+            
+            # Invalidate existing reset tokens
+            existing_tokens_result = await self.db.execute(
+                select(UserToken)
+                .where(UserToken.user_id == user.id)
+                .where(UserToken.token_type == TokenType.PASSWORD_RESET)
+                .where(UserToken.used_at.is_(None))
+            )
+            existing_tokens = existing_tokens_result.scalars().all()
+            
+            for token in existing_tokens:
+                token.mark_as_used()
+            
+            # Generate reset token
+            email_service = EmailService()
+            token = email_service.generate_reset_token()
+            
+            # Create token record
+            user_token = UserToken.create_reset_token(user.id, token)
+            self.db.add(user_token)
+            await self.db.commit()
+            
+            # Send reset email
+            success = await email_service.send_password_reset_email(
+                user.email,
+                user.full_name,
+                token
+            )
+            
+            if success:
+                logger.info(f"Password reset email sent to: {user.email}")
+            else:
+                logger.error(f"Failed to send password reset email to: {user.email}")
+            
+            return True  # Always return True for security
+            
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Error sending password reset email for {email}: {e}")
+            return True  # Always return True for security
+    
+    async def reset_password(self, token: str, new_password: str) -> bool:
+        """
+        Reset user password with token.
+        
+        Args:
+            token: Password reset token
+            new_password: New password
+            
+        Returns:
+            True if reset successful
+        """
+        try:
+            # Find token
+            result = await self.db.execute(
+                select(UserToken)
+                .where(UserToken.token == token)
+                .where(UserToken.token_type == TokenType.PASSWORD_RESET)
+            )
+            user_token = result.scalar_one_or_none()
+            
+            if not user_token:
+                logger.warning(f"Invalid reset token: {token}")
+                return False
+            
+            if not user_token.is_valid:
+                logger.warning(f"Expired or used reset token: {token}")
+                return False
+            
+            # Get user
+            user = await self.get_user_by_id(str(user_token.user_id))
+            if not user:
+                return False
+            
+            # Update password
+            user.hashed_password = get_password_hash(new_password)
+            user_token.mark_as_used()
+            
+            await self.db.commit()
+            
+            logger.info(f"Password reset for user: {user.email}")
+            return True
+            
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Error resetting password with token {token}: {e}")
             return False

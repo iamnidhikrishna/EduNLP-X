@@ -136,6 +136,85 @@ async def logout(
     return {"message": "Successfully logged out"}
 
 
+@router.post("/send-verification-email")
+async def send_verification_email(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Send email verification email to current user."""
+    auth_service = AuthService(db)
+    
+    success = await auth_service.send_verification_email(str(current_user.id))
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send verification email"
+        )
+    
+    return {"message": "Verification email sent successfully"}
+
+
+@router.post("/verify-email")
+async def verify_email(
+    token: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Verify user email with token."""
+    auth_service = AuthService(db)
+    
+    success = await auth_service.verify_email(token)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token"
+        )
+    
+    return {"message": "Email verified successfully"}
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    email: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Send password reset email."""
+    auth_service = AuthService(db)
+    
+    # Always return success for security (don't reveal if email exists)
+    await auth_service.send_password_reset_email(email)
+    
+    return {"message": "If the email address exists, a password reset link has been sent"}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    token: str,
+    new_password: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Reset password with token."""
+    auth_service = AuthService(db)
+    
+    # Validate password strength (basic validation)
+    if len(new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters long"
+        )
+    
+    success = await auth_service.reset_password(token, new_password)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+    
+    return {"message": "Password reset successfully"}
+
+
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
     current_user: User = Depends(get_current_user)
